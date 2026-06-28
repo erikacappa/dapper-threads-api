@@ -330,7 +330,10 @@ dapperthreadsus.com
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/', methods=['GET'])
+def root():
+    return jsonify({'status': 'ok', 'service': 'Dapper Threads PDF Generator'})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
