@@ -86,18 +86,39 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
     chip_r  = max(0, (CHIP_R_MM - CHIP_BLEED)) * mm
 
     # ── LAYER 1: Customer photo (full bleed) ──────────────────────────────────
-    # The frontend has already rendered the image to a canvas with all transforms
-    # applied, so image_bytes is a pre-composited PNG at the right size.
-    # We just need to draw it filling the full page.
     try:
         from reportlab.lib.utils import ImageReader
+        import traceback
 
-        img = Image.open(io.BytesIO(image_bytes)).convert('RGBA')
-        img_w, img_h = img.size
+        print(f"Image bytes received: {len(image_bytes)} bytes")
+
+        # Open and flatten to RGB (PDF does not support RGBA)
+        img = Image.open(io.BytesIO(image_bytes))
+        print(f"Image mode: {img.mode}, size: {img.size}")
+
+        # Flatten transparency onto white background
+        bg = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'RGBA':
+            bg.paste(img, mask=img.split()[3])
+        elif img.mode == 'RGB':
+            bg = img
+        else:
+            bg = img.convert('RGB')
+
+        print(f"Flattened image size: {bg.size}")
+
+        # Save as JPEG for reliable ReportLab compatibility
+        img_buf = io.BytesIO()
+        bg.save(img_buf, format='JPEG', quality=95)
+        img_buf.seek(0)
+        print(f"JPEG buffer size: {img_buf.getbuffer().nbytes} bytes")
+
+        img_reader = ImageReader(img_buf)
 
         # Scale to cover full page
-        page_aspect = PAGE_W_MM / PAGE_H_MM
-        img_aspect  = img_w / img_h
+        img_w, img_h = bg.size
+        page_aspect  = PAGE_W_MM / PAGE_H_MM
+        img_aspect   = img_w / img_h
 
         if img_aspect > page_aspect:
             draw_h = ph
@@ -109,28 +130,15 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
         x_off = (pw - draw_w) / 2
         y_off = (ph - draw_h) / 2
 
-        # Convert RGBA to RGB with white background for PDF compatibility
-        bg = Image.new('RGB', img.size, (255, 255, 255))
-        if img.mode == 'RGBA':
-            bg.paste(img, mask=img.split()[3])
-        else:
-            bg = img.convert('RGB')
-
-        img_buf = io.BytesIO()
-        bg.save(img_buf, format='PNG', optimize=False)
-        img_buf.seek(0)
-
-        img_reader = ImageReader(img_buf)
-
-        # Draw image filling full page (bleed area)
+        print(f"Drawing image at x={x_off:.1f} y={y_off:.1f} w={draw_w:.1f} h={draw_h:.1f}")
         c.drawImage(img_reader, x_off, y_off, draw_w, draw_h,
                     preserveAspectRatio=False)
+        print("Image drawn successfully")
 
     except Exception as e:
-        print(f"Image draw error: {e}")
-        import traceback; traceback.print_exc()
-        # Fallback: light grey background
-        c.setFillColor(Color(0.9, 0.9, 0.9))
+        print(f"IMAGE DRAW ERROR: {e}")
+        traceback.print_exc()
+        c.setFillColor(Color(0.85, 0.85, 0.85))
         c.rect(0, 0, pw, ph, fill=1, stroke=0)
 
     # ── LAYER 2: White chip hole (knocks out photo under chip) ───────────────
