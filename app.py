@@ -86,18 +86,20 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
     chip_r  = max(0, (CHIP_R_MM - CHIP_BLEED)) * mm
 
     # ── LAYER 1: Customer photo (full bleed) ──────────────────────────────────
+    # The frontend has already rendered the image to a canvas with all transforms
+    # applied, so image_bytes is a pre-composited PNG at the right size.
+    # We just need to draw it filling the full page.
     try:
-        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        from reportlab.lib.utils import ImageReader
 
-        # Scale to fill full page (cover), respecting transform from frontend
-        # (frontend has already applied transforms and rendered to canvas,
-        #  so image_bytes is the pre-rendered canvas export)
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGBA')
         img_w, img_h = img.size
-        page_aspect  = PAGE_W_MM / PAGE_H_MM
-        img_aspect   = img_w / img_h
+
+        # Scale to cover full page
+        page_aspect = PAGE_W_MM / PAGE_H_MM
+        img_aspect  = img_w / img_h
 
         if img_aspect > page_aspect:
-            # Image wider than page — fit by height
             draw_h = ph
             draw_w = ph * img_aspect
         else:
@@ -107,25 +109,28 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
         x_off = (pw - draw_w) / 2
         y_off = (ph - draw_h) / 2
 
-        # Save image to temp buffer for ReportLab
+        # Convert RGBA to RGB with white background for PDF compatibility
+        bg = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'RGBA':
+            bg.paste(img, mask=img.split()[3])
+        else:
+            bg = img.convert('RGB')
+
         img_buf = io.BytesIO()
-        img.save(img_buf, format='PNG')
+        bg.save(img_buf, format='PNG', optimize=False)
         img_buf.seek(0)
 
-        # Draw with rounded corner clipping path
-        c.saveState()
-        p = c.beginPath()
-        p.roundRect(0, 0, pw, ph, card_r + BLEED_MM * mm)
-        c.clipPath(p, stroke=0, fill=0)
-        c.drawImage(
-            img_buf, x_off, y_off, draw_w, draw_h,
-            preserveAspectRatio=False, mask='auto'
-        )
-        c.restoreState()
+        img_reader = ImageReader(img_buf)
+
+        # Draw image filling full page (bleed area)
+        c.drawImage(img_reader, x_off, y_off, draw_w, draw_h,
+                    preserveAspectRatio=False)
 
     except Exception as e:
-        # Fallback: white background if image fails
-        c.setFillColor(white)
+        print(f"Image draw error: {e}")
+        import traceback; traceback.print_exc()
+        # Fallback: light grey background
+        c.setFillColor(Color(0.9, 0.9, 0.9))
         c.rect(0, 0, pw, ph, fill=1, stroke=0)
 
     # ── LAYER 2: White chip hole (knocks out photo under chip) ───────────────
@@ -329,6 +334,7 @@ dapperthreadsus.com
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/', methods=['GET'])
 def root():
