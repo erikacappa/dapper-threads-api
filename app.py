@@ -77,20 +77,25 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
     card_h = CARD_H_MM * mm
     card_r = CORNER_MM * mm
 
-    # Chip hole positions:
-    # Outer boundary (no bleed) — used for white knockout so photo shows under chip edges
+    # Chip hole positions (PDF y is bottom-up):
+    # chip_y_pdf = bleed + (card_height - chip_y_from_top - chip_height)
+
+    # Outer boundary (no inward bleed) — white knockout, photo bleeds to chip edge
     chip_outer_x = (BLEED_MM + chip['x']) * mm
     chip_outer_y = (BLEED_MM + CARD_H_MM - chip['y'] - chip['h']) * mm
     chip_outer_w = chip['w'] * mm
     chip_outer_h = chip['h'] * mm
     chip_outer_r = CHIP_R_MM * mm
 
-    # Inner boundary (inward bleed applied) — used for CutContour kiss cut line
-    chip_x  = (BLEED_MM + chip['x'] + CHIP_BLEED) * mm
-    chip_y  = (BLEED_MM + CARD_H_MM - chip['y'] - chip['h'] + CHIP_BLEED) * mm
-    chip_w  = (chip['w'] - CHIP_BLEED * 2) * mm
-    chip_h  = (chip['h'] - CHIP_BLEED * 2) * mm
-    chip_r  = max(0, (CHIP_R_MM - CHIP_BLEED)) * mm
+    # Inner boundary (inward bleed) — CutContour kiss cut line sits here
+    chip_x = (BLEED_MM + chip['x'] + CHIP_BLEED) * mm
+    chip_y = (BLEED_MM + CARD_H_MM - chip['y'] - chip['h'] + CHIP_BLEED) * mm
+    chip_w = (chip['w'] - CHIP_BLEED * 2) * mm
+    chip_h = (chip['h'] - CHIP_BLEED * 2) * mm
+    chip_r = max(0, CHIP_R_MM - CHIP_BLEED) * mm
+
+    print(f"Chip outer: x={chip_outer_x/mm:.2f}mm y={chip_outer_y/mm:.2f}mm w={chip_outer_w/mm:.2f}mm h={chip_outer_h/mm:.2f}mm")
+    print(f"Chip inner: x={chip_x/mm:.2f}mm y={chip_y/mm:.2f}mm w={chip_w/mm:.2f}mm h={chip_h/mm:.2f}mm")
 
     # ── LAYER 1: Customer photo (full bleed) ──────────────────────────────────
     try:
