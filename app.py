@@ -77,8 +77,15 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
     card_h = CARD_H_MM * mm
     card_r = CORNER_MM * mm
 
-    # Chip hole position (PDF y is bottom-up)
-    # With inward bleed applied
+    # Chip hole positions:
+    # Outer boundary (no bleed) — used for white knockout so photo shows under chip edges
+    chip_outer_x = (BLEED_MM + chip['x']) * mm
+    chip_outer_y = (BLEED_MM + CARD_H_MM - chip['y'] - chip['h']) * mm
+    chip_outer_w = chip['w'] * mm
+    chip_outer_h = chip['h'] * mm
+    chip_outer_r = CHIP_R_MM * mm
+
+    # Inner boundary (inward bleed applied) — used for CutContour kiss cut line
     chip_x  = (BLEED_MM + chip['x'] + CHIP_BLEED) * mm
     chip_y  = (BLEED_MM + CARD_H_MM - chip['y'] - chip['h'] + CHIP_BLEED) * mm
     chip_w  = (chip['w'] - CHIP_BLEED * 2) * mm
@@ -141,11 +148,13 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
         c.setFillColor(Color(0.85, 0.85, 0.85))
         c.rect(0, 0, pw, ph, fill=1, stroke=0)
 
-    # ── LAYER 2: White chip hole (knocks out photo under chip) ───────────────
+    # ── LAYER 2: White chip hole knockout (uses outer boundary — no inward bleed)
+    # Photo bleeds 1mm under the chip edges for clean coverage
     c.saveState()
     c.setFillColor(white)
     c.setStrokeColor(Color(0, 0, 0, 0))
-    c.roundRect(chip_x, chip_y, chip_w, chip_h, chip_r, fill=1, stroke=0)
+    c.roundRect(chip_outer_x, chip_outer_y, chip_outer_w, chip_outer_h,
+                chip_outer_r, fill=1, stroke=0)
     c.restoreState()
 
     # ── LAYER 3: PerfCutContour — outer page edge (full cut through) ─────────
