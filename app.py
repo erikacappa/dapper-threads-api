@@ -153,14 +153,9 @@ def generate_card_pdf(image_bytes, chip_type, order_info):
         c.setFillColor(Color(0.85, 0.85, 0.85))
         c.rect(0, 0, pw, ph, fill=1, stroke=0)
 
-    # ── LAYER 2: White chip hole knockout (uses outer boundary — no inward bleed)
-    # Photo bleeds 1mm under the chip edges for clean coverage
-    c.saveState()
-    c.setFillColor(white)
-    c.setStrokeColor(Color(0, 0, 0, 0))
-    c.roundRect(chip_outer_x, chip_outer_y, chip_outer_w, chip_outer_h,
-                chip_outer_r, fill=1, stroke=0)
-    c.restoreState()
+    # No white knockout — image prints through chip area
+    # VersaWorks kiss cuts the chip hole from the CutContour path
+    # and the vinyl peels back to expose the chip underneath
 
     # ── LAYER 3: PerfCutContour — outer page edge (full cut through) ─────────
     inset = 0.1 * mm
