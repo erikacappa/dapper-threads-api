@@ -333,6 +333,8 @@ Designs submitted: {len(designs)}
 
 Your order will ship within 10 business days. We'll be in touch if we have any questions.
 
+If you have any questions, please email us at support@dapperthreadsus.com.
+
 Thanks for choosing Dapper Threads!
 — The Dapper Threads Team
 dapperthreadsus.com
