@@ -264,14 +264,19 @@ def generate_pdf_endpoint():
         attachments = []
         failed = []  # [{'index':.., 'chip':.., 'reason':..}]
 
+        designs_ok = 0
+
         for i,design in enumerate(designs):
             fk = f'image_{i+1}'
             if fk not in request.files: continue
             chip  = design.get('chip_type','standard')
-            qty   = design.get('quantity',1)
             didx  = design.get('design_index',i+1)
+            try:
+                qty = max(1, int(design.get('quantity',1)))
+            except (TypeError, ValueError):
+                qty = 1
             img_b = request.files[fk].read()
-            print(f"  Design {didx}: {chip} chip, {len(img_b)} bytes")
+            print(f"  Design {didx}: {chip} chip, qty {qty}, {len(img_b)} bytes")
 
             ok, reason = validate_upload(img_b)
             if not ok:
@@ -279,11 +284,16 @@ def generate_pdf_endpoint():
                 failed.append({'index': didx, 'chip': chip, 'qty': qty, 'reason': reason})
                 continue
 
-            pdf   = generate_pdf(img_b, chip, order_info)
-            fname = (f"DapperThreads_{order_info['first_name']}{order_info['last_name']}"
-                     f"_Order{order_info['order_number']}_Design{didx}_{chip}chip_qty{qty}_PRINT+CUT.pdf")
-            attachments.append((fname,pdf))
-            print(f"  → {len(pdf):,} bytes")
+            pdf = generate_pdf(img_b, chip, order_info)
+            designs_ok += 1
+            # One PDF file per requested copy — so the inbox has exactly as
+            # many files as cards to produce, no manual duplicating needed.
+            # Naming convention: CustomerName_Order#_Design#_CopyXofX.pdf
+            customer_name = f"{order_info['first_name']}{order_info['last_name']}"
+            for copy_n in range(1, qty+1):
+                fname = f"{customer_name}_Order{order_info['order_number']}_Design{didx}_Copy{copy_n}of{qty}.pdf"
+                attachments.append((fname,pdf))
+            print(f"  → {len(pdf):,} bytes × {qty} copies")
 
         if not attachments and not failed: return jsonify({'error':'No valid images'}),400
 
@@ -298,8 +308,9 @@ def generate_pdf_endpoint():
                 f"Email: {order_info['email']}\n"
                 f"Order #: {order_info['order_number']}\n"
                 f"Designs submitted: {len(designs)}\n"
-                f"Designs processed OK: {len(attachments)}\n"
-                f"Designs failed: {len(failed)}\n\n"
+                f"Designs processed OK: {designs_ok}\n"
+                f"Designs failed: {len(failed)}\n"
+                f"Total PDF files attached: {len(attachments)} (one per card, quantities already expanded)\n\n"
                 f"{design_lines}\n")
 
         if failed:
@@ -342,7 +353,8 @@ def generate_pdf_endpoint():
 
         return jsonify({
             'status': 'success' if not failed else 'partial',
-            'designs': len(attachments),
+            'designs_ok': designs_ok,
+            'files_attached': len(attachments),
             'failed': failed,
             'email_sent': sent
         })
