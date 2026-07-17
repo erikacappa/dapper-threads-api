@@ -1,636 +1,366 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Custom Card Skin Designer &middot; Dapper Threads</title>
-<style>
-  :root{
-    --ink:#2b2420; --paper:#faf6ef; --line:#e4dccb; --accent:#8a6a3b; --accent-dark:#5c4526;
-    --danger:#b0442f; --ok:#3c6e4f;
-  }
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--paper);color:var(--ink);}
-  header{display:flex;align-items:center;justify-content:space-between;padding:18px 32px;border-bottom:1px solid var(--line);background:#fff;}
-  .brand{display:flex;align-items:baseline;gap:14px;}
-  .brand h1{font-size:20px;margin:0;letter-spacing:.5px;}
-  .brand span{font-size:11px;letter-spacing:2px;color:#8a7f6c;display:block;text-transform:uppercase;}
-  .brand .sub{font-size:13px;color:#8a7f6c;border-left:1px solid var(--line);padding-left:14px;}
-  header a.shop{font-size:13px;color:var(--accent-dark);text-decoration:none;border:1px solid var(--line);padding:8px 14px;border-radius:6px;}
-  main{max-width:1100px;margin:0 auto;padding:28px 24px 80px;}
-  .notice{background:#fbeee9;border:1px solid #eccdc2;color:#7a3222;padding:14px 16px;border-radius:8px;font-size:14px;margin-bottom:26px;}
-  .notice a{color:#7a3222;font-weight:600;}
-  section.block{margin-bottom:28px;}
-  .step-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
-  .step-num{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none;}
-  .step-title{font-size:15px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
-  .step-desc{font-size:13px;color:#7a7060;margin:2px 0 16px 38px;}
-  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:22px;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  label.field{display:block;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8a7f6c;margin-bottom:6px;}
-  input[type=text],input[type=email],input[type=number]{
-    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font-size:14px;background:#fdfbf7;color:var(--ink);
-  }
-  input:focus{outline:2px solid #d8c7a1;outline-offset:1px;}
-  .design-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:18px;position:relative;}
-  .design-card h3{margin:0 0 16px;font-size:14px;letter-spacing:.5px;}
-  .design-remove{position:absolute;top:18px;right:20px;font-size:12px;color:#9a4130;background:none;border:none;cursor:pointer;text-decoration:underline;}
-  .designer-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start;}
-  @media (max-width:820px){ .designer-grid{grid-template-columns:1fr;} .grid2{grid-template-columns:1fr;} }
-  .field-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8a7f6c;margin-bottom:8px;}
-  .chip-choices{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;}
-  .chip-choice{border:2px solid var(--line);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:#fff;}
-  .chip-choice.selected{border-color:var(--ink);}
-  .chip-swatch{height:70px;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;font-size:26px;}
-  .chip-standard .chip-swatch{background:#e7e2f2;}
-  .chip-large .chip-swatch{background:#deede4;}
-  .chip-choice .label{font-size:11px;font-weight:700;letter-spacing:.5px;}
-  .qty-row{margin-bottom:18px;}
-  .qty-row input{width:110px;}
-  .dropzone{display:block;border:2px dashed #cbb27e;border-radius:10px;padding:26px;text-align:center;background:#fbf7ee;cursor:pointer;margin-bottom:20px;}
-  .dropzone .icon{font-size:26px;}
-  .dropzone .cta{color:var(--accent-dark);font-weight:700;}
-  .dropzone .hint{font-size:11px;color:#9a8f7a;letter-spacing:.5px;margin-top:6px;text-transform:uppercase;}
-  .dropzone.has-file{border-style:solid;}
-  .dropzone input[type=file]{display:none;}
-  .filename{font-size:12px;color:#5c5344;margin-top:8px;word-break:break-all;}
-  .adjust-title{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8a7f6c;margin:4px 0 12px;}
-  .slider-row{display:grid;grid-template-columns:70px 1fr 46px;align-items:center;gap:10px;margin-bottom:10px;font-size:13px;}
-  .slider-row input[type=range]{width:100%;}
-  .slider-row .val{text-align:right;color:var(--accent-dark);font-weight:600;font-size:13px;}
-  .reset-btn{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:13px;cursor:pointer;margin-top:4px;}
-  .reset-btn:hover{background:#f4efe4;}
-  .preview-col{position:sticky;top:20px;}
-  .preview-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8a7f6c;margin-bottom:10px;}
-  .preview-frame{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.12);cursor:grab;line-height:0;}
-  .preview-frame:active{cursor:grabbing;}
-  .preview-frame canvas{width:100%;height:auto;display:block;}
-  .chip-guide{position:absolute;border:1.5px dashed rgba(255,255,255,.85);background:rgba(255,255,255,.18);border-radius:4px;pointer-events:none;}
-  .preview-caption{text-align:center;font-size:12px;color:#9a8f7a;margin-top:10px;letter-spacing:.3px;}
-  .add-design-btn{display:block;width:100%;padding:16px;border:2px dashed #cbb27e;border-radius:10px;background:#fbf7ee;color:var(--accent-dark);font-weight:700;font-size:14px;cursor:pointer;margin-bottom:28px;}
-  .add-design-btn:hover{background:#f5edd9;}
-  .submit-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px;}
-  .submit-desc{font-size:13px;color:#6b6151;margin-bottom:16px;}
-  .submit-btn{width:100%;padding:15px;border:none;border-radius:8px;background:var(--ink);color:#fff;font-size:15px;font-weight:700;cursor:pointer;}
-  .submit-btn:disabled{opacity:.5;cursor:not-allowed;}
-  .submit-btn:not(:disabled):hover{background:#463d33;}
-  .validation-msg{font-size:12px;color:var(--danger);margin-top:10px;text-align:center;}
-  .footer-meta{display:flex;gap:28px;justify-content:center;margin-top:26px;font-size:12px;color:#8a7f6c;flex-wrap:wrap;}
-  .footer-meta b{color:var(--ink);}
-  .modal-overlay{position:fixed;inset:0;background:rgba(30,25,18,.55);display:none;align-items:center;justify-content:center;z-index:50;}
-  .modal-overlay.show{display:flex;}
-  .modal{background:#fff;border-radius:14px;padding:36px;max-width:420px;text-align:center;}
-  .modal .emoji{font-size:40px;}
-  .modal h2{margin:12px 0 8px;}
-  .modal p{font-size:14px;color:#6b6151;line-height:1.5;}
-  .modal button{margin-top:18px;padding:11px 26px;border:none;border-radius:8px;background:var(--ink);color:#fff;font-weight:700;cursor:pointer;}
-  .bg-swatches{display:flex;gap:8px;margin-bottom:16px;}
-  .bg-swatch{width:26px;height:26px;border-radius:6px;border:2px solid var(--line);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);}
-  .bg-swatch.selected{border-color:var(--ink);}
-</style>
-</head>
-<body>
+import os, io, zlib, json, smtplib, traceback, struct
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from PIL import Image, ImageStat
 
-<header>
-  <div class="brand">
-    <div>
-      <h1>Dapper Threads</h1>
-      <span>Custom Card Skins</span>
-    </div>
-    <div class="sub">Design Submission</div>
-  </div>
-  <a class="shop" href="https://www.DapperThreadsUS.com" target="_blank" rel="noopener">Shop at DapperThreadsUS.com &rarr;</a>
-</header>
+app = Flask(__name__)
+CORS(app, origins=["https://visionary-daifuku-f59ee5.netlify.app", "http://localhost"])
 
-<main>
-  <div class="notice">
-    🛒 <strong>A completed purchase is required before submitting your design.</strong>
-    Please visit <a href="https://www.DapperThreadsUS.com" target="_blank" rel="noopener">DapperThreadsUS.com</a>
-    to purchase your custom card skin first, then return here with your order number.
-    Submissions without a valid order number will not be processed.
-  </div>
+CARD_W, CARD_H, CORNER = 85.6, 53.98, 3.18
+BLEED, CHIP_BLEED       = 1.0, 1.0
+PAGE_W = CARD_W + BLEED*2
+PAGE_H = CARD_H + BLEED*2
 
-  <section class="block">
-    <div class="step-head"><div class="step-num">1</div><div class="step-title">Order Information</div></div>
-    <div class="card">
-      <div class="grid2">
-        <div>
-          <label class="field">First Name *</label>
-          <input type="text" id="firstName" autocomplete="given-name">
-        </div>
-        <div>
-          <label class="field">Last Name *</label>
-          <input type="text" id="lastName" autocomplete="family-name">
-        </div>
-        <div>
-          <label class="field">Email Address *</label>
-          <input type="email" id="email" autocomplete="email">
-        </div>
-        <div>
-          <label class="field">Order # *</label>
-          <input type="text" id="orderNumber">
-        </div>
-      </div>
-    </div>
-  </section>
+FORM_URL = "https://visionary-daifuku-f59ee5.netlify.app"
 
-  <section class="block">
-    <div class="step-head"><div class="step-num">2</div><div class="step-title">Your Designs</div></div>
-    <div class="step-desc">Add one design slot per card skin design. If you're ordering the same design on multiple cards, enter the quantity in that slot. Add as many different designs as your order includes.</div>
-    <div id="designsContainer"></div>
-    <button type="button" class="add-design-btn" id="addDesignBtn">+ Add Another Design</button>
-  </section>
+CHIPS = {
+    'standard': dict(x=9.63-0.50-0.75, y=18.73-0.75,  w=11.52+1.50, h=8.54+1.50,  r=1.5),
+    'large':    dict(x=9.04-0.30-0.875,y=18.20-1.875, w=13.04+1.75, h=11.92+1.75, r=1.5),
+}
 
-  <section class="block">
-    <div class="step-head"><div class="step-num">3</div><div class="step-title">Submit Your Order</div></div>
-    <div class="submit-card">
-      <div class="submit-desc">When you're happy with all your previews, click below to submit. Each design will download to your device and we'll receive your order details. Your order will ship within 10 business days.</div>
-      <button type="button" class="submit-btn" id="submitBtn">&#10003; Submit My Order</button>
-      <div class="validation-msg" id="validationMsg"></div>
-    </div>
-  </section>
+def pt(v): return v * 2.8346456693
 
-  <div class="footer-meta">
-    <div>Bleed <b>1mm</b></div>
-    <div>Output <b>300dpi PNG</b></div>
-    <div>Card <b>85.6&times;53.98mm</b></div>
-  </div>
-</main>
+def rrect(x, y, w, h, r):
+    """Rounded rect PDF path. All args in mm, y from page bottom."""
+    x,y,w,h,r = pt(x),pt(y),pt(w),pt(h),pt(r)
+    return (f"{x+r:.4f} {y:.4f} m "
+            f"{x+w-r:.4f} {y:.4f} l {x+w:.4f} {y:.4f} {x+w:.4f} {y+r:.4f} v "
+            f"{x+w:.4f} {y+h-r:.4f} l {x+w:.4f} {y+h:.4f} {x+w-r:.4f} {y+h:.4f} v "
+            f"{x+r:.4f} {y+h:.4f} l {x:.4f} {y+h:.4f} {x:.4f} {y+h-r:.4f} v "
+            f"{x:.4f} {y+r:.4f} l {x:.4f} {y:.4f} {x+r:.4f} {y:.4f} v h")
 
-<div class="modal-overlay" id="successModal">
-  <div class="modal">
-    <div class="emoji">🎉</div>
-    <h2>Order Submitted!</h2>
-    <p>Your designs have been submitted! Print-ready PDFs with cut lines have been emailed to us and copies have downloaded to your device. We'll be in touch if we have any questions.</p>
-    <p>Your order will ship within 10 business days.</p>
-    <button type="button" id="modalDoneBtn">Done</button>
-  </div>
-</div>
 
-<!--
-  Static hidden form so Netlify's build-time HTML parser registers this form.
-  Field names must exactly match what the real submission FormData uses below.
--->
-<form name="card-skin-order" data-netlify="true" netlify-honeypot="bot-field" hidden>
-  <input type="text" name="first-name">
-  <input type="text" name="last-name">
-  <input type="email" name="email">
-  <input type="text" name="order-number">
-  <input type="text" name="designs-summary">
-  <input type="file" name="design-file-1">
-  <input type="file" name="design-file-2">
-  <input type="file" name="design-file-3">
-  <input type="file" name="design-file-4">
-  <input type="file" name="design-file-5">
-  <input type="file" name="design-file-6">
-  <input type="file" name="design-file-7">
-  <input type="file" name="design-file-8">
-  <input type="file" name="design-file-9">
-  <input type="file" name="design-file-10">
-  <input type="text" name="overflow-notice">
-  <input name="bot-field">
-</form>
+# ── Upload validation ────────────────────────────────────────────────────────
+# Catches two distinct failure modes we've seen in the wild:
+#   1. Truly corrupted/truncated files (network drop mid-upload) — PIL raises
+#      when we force a full decode via img.load().
+#   2. Files that decode fine (valid PNG/JPEG) but the *browser* exported the
+#      canvas before a tiled background pattern finished loading, leaving a
+#      solid black block covering part of the frame. This doesn't raise any
+#      decode error, so we need a content heuristic to catch it.
 
-<script>
-(function(){
-  "use strict";
+def looks_incomplete(img, band_count=20, blank_threshold=6, run_fraction=0.35):
+    """Flag images where a contiguous block of near-black bands sits at the
+    top or bottom edge of the frame, suggesting the design didn't fully
+    render before export. Real dark/black designs still have variance from
+    prints/text/borders; a flat, uniform black block run is the signature of
+    a failed render, not an intentional dark background."""
+    w, h = img.size
+    band_h = max(1, h // band_count)
+    means = []
+    for i in range(band_count):
+        top = i * band_h
+        bottom = h if i == band_count - 1 else top + band_h
+        band = img.crop((0, top, w, bottom))
+        stat = ImageStat.Stat(band)
+        means.append(sum(stat.mean) / len(stat.mean))
 
-  // ── Card geometry (mm) — must match dapper-threads-api/app.py exactly ────
-  const CARD_W = 85.6, CARD_H = 53.98, CORNER = 3.18;
-  const BLEED = 1.0, CHIP_BLEED = 1.0;
-  const PAGE_W = CARD_W + BLEED*2;   // 87.6
-  const PAGE_H = CARD_H + BLEED*2;   // 55.98
-  const DPI = 300;
-  const PXW = Math.round(PAGE_W / 25.4 * DPI);  // 1035
-  const PXH = Math.round(PAGE_H / 25.4 * DPI);  // 661
-  const MM_TO_PX = PXW / PAGE_W;
+    def longest_blank_run_from(edge):
+        seq = means if edge == 'top' else list(reversed(means))
+        run = 0
+        for m in seq:
+            if m <= blank_threshold:
+                run += 1
+            else:
+                break
+        return run
 
-  const CHIPS = {
-    standard: { x: 8.38,  y: 17.98,  w: 13.02, h: 10.04, r: 1.5 },
-    large:    { x: 7.865, y: 16.325, w: 14.79, h: 13.67, r: 1.5 },
-  };
+    worst_run = max(longest_blank_run_from('top'), longest_blank_run_from('bottom'))
+    return worst_run >= band_count * run_fraction
 
-  const RENDER_API = "https://dapper-threads-api.onrender.com/generate-pdf";
-  const MAX_DESIGNS = 10;
-  const BG_COLORS = ["#000000", "#ffffff", "#4a4a4a"];
 
-  let designs = [];   // { id, chipType, quantity, file, imgEl, scale, moveX, moveY, rotate, bgColor }
-  let nextId = 1;
+def validate_upload(image_bytes):
+    """Returns (ok, reason). reason is None when ok is True."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img.load()  # forces full decode; raises on truncated/corrupted data
+    except Exception as e:
+        return False, f"file appears corrupted or incomplete ({e})"
 
-  function roundRectPath(ctx, x, y, w, h, r){
-    ctx.beginPath();
-    ctx.moveTo(x+r, y);
-    ctx.arcTo(x+w, y,   x+w, y+h, r);
-    ctx.arcTo(x+w, y+h, x,   y+h, r);
-    ctx.arcTo(x,   y+h, x,   y,   r);
-    ctx.arcTo(x,   y,   x+w, y,   r);
-    ctx.closePath();
-  }
+    try:
+        img = img.convert('RGB')
+        if looks_incomplete(img):
+            return False, "design appears to be missing content (partial render)"
+    except Exception as e:
+        return False, f"could not process image ({e})"
 
-  // ── THE FIX ───────────────────────────────────────────────────────────────
-  // Previous (broken) implementation computed a "cover fit" source crop once,
-  // then scaled the *already-cropped* rectangle up/down. Reducing scale below
-  // 100% just shrank that same crop on screen — it never revealed the parts
-  // of the original photo that the crop excluded, and it left the untouched
-  // canvas area fully transparent, which later collapsed to solid black once
-  // the PDF pipeline flattened the PNG to RGB.
-  //
-  // Fixed approach: always draw the FULL source image (never pre-cropped).
-  // "Scale" now zooms the whole image in/out around the card's center, and a
-  // clip path constrains what's visible to the card+bleed shape. An opaque
-  // background is always painted first, so any area the image doesn't reach
-  // renders as an intentional, visible color — never a silent transparent
-  // gap that turns black downstream.
-  function drawDesign(canvas, design){
-    const ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.clearRect(0, 0, PXW, PXH);
+    return True, None
 
-    // 1. Always-opaque background fill first.
-    ctx.fillStyle = design.bgColor || '#000000';
-    ctx.fillRect(0, 0, PXW, PXH);
 
-    // 2. Clip to the card+bleed rounded-rect silhouette.
-    roundRectPath(ctx, 0, 0, PXW, PXH, (CORNER + BLEED) * MM_TO_PX);
-    ctx.clip();
+def generate_pdf(image_bytes, chip_type, order_info):
+    chip = CHIPS.get(chip_type, CHIPS['standard'])
+    PW, PH = pt(PAGE_W), pt(PAGE_H)
 
-    if (design.imgEl){
-      const iw = design.imgEl.naturalWidth, ih = design.imgEl.naturalHeight;
-      if (iw && ih){
-        const imageAspect = iw / ih, canvasAspect = PXW / PXH;
-        let baseW, baseH;
-        if (imageAspect > canvasAspect){ baseH = PXH; baseW = PXH * imageAspect; }
-        else                           { baseW = PXW; baseH = PXW / imageAspect; }
+    # Prepare image
+    img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    iw, ih = img.size
+    img_comp = zlib.compress(img.tobytes(), 6)
 
-        const drawW = baseW * design.scale;
-        const drawH = baseH * design.scale;
-        const cx = PXW / 2 + design.moveX * MM_TO_PX;
-        const cy = PXH / 2 + design.moveY * MM_TO_PX;
+    # Image scale to cover full page
+    ia, ca = iw/ih, PAGE_W/PAGE_H
+    if ia > ca: dh=PH; dw=PH*ia; dx=(PW-dw)/2; dy=0
+    else:       dw=PW; dh=PW/ia; dx=0;          dy=(PH-dh)/2
 
-        ctx.translate(cx, cy);
-        ctx.rotate(design.rotate * Math.PI / 180);
-        ctx.drawImage(design.imgEl, -drawW / 2, -drawH / 2, drawW, drawH);
-      }
-    }
-    ctx.restore();
-  }
+    # Cut paths
+    INSET = 0.1
+    perf_path = rrect(INSET, INSET, PAGE_W-INSET*2, PAGE_H-INSET*2, CORNER+BLEED-INSET)
+    card_path = rrect(BLEED, BLEED, CARD_W, CARD_H, CORNER)
+    cx  = BLEED + chip['x'] + CHIP_BLEED
+    cy  = BLEED + CARD_H - chip['y'] - chip['h'] + CHIP_BLEED
+    chip_path = rrect(cx, cy, chip['w']-CHIP_BLEED*2, chip['h']-CHIP_BLEED*2, max(0,chip['r']-CHIP_BLEED))
 
-  function redraw(design){
-    if (!design.canvasEl) return;
-    drawDesign(design.canvasEl, design);
-  }
+    page_clip = rrect(0, 0, PAGE_W, PAGE_H, CORNER+BLEED)
 
-  // ── UI construction ───────────────────────────────────────────────────────
-  function chipSwatchEmoji(type){ return type === 'large' ? '💳' : '🔲'; }
+    # ── Build PDF objects ─────────────────────────────────────────────────────
+    # We define spot colors as named resources in /ColorSpace dict on the page
+    # so VersaWorks can find them as proper separations.
+    # /CS1 = CutContour, /CS2 = PerfCutContour
+    #
+    # Tint functions:
+    #   CutContour     → DeviceCMYK 0 1 0 0 (magenta)
+    #   PerfCutContour → DeviceCMYK 1 0 1 0 (green)
+    #
+    # Each is: [/Separation /Name /DeviceCMYK tintFunc]
+    # tintFunc is a PostScript function {t 0 t 0} etc.
 
-  function createDesignCard(design){
-    const el = document.createElement('div');
-    el.className = 'design-card';
-    el.dataset.id = design.id;
-    el.innerHTML = `
-      <h3>Design ${design.indexLabel}</h3>
-      <button type="button" class="design-remove" data-action="remove">Remove this design</button>
-      <div class="designer-grid">
-        <div>
-          <div class="field-label">Chip Size</div>
-          <div class="chip-choices">
-            <div class="chip-choice chip-standard selected" data-chip="standard">
-              <div class="chip-swatch">🔲</div>
-              <div class="label">STANDARD CHIP</div>
-            </div>
-            <div class="chip-choice chip-large" data-chip="large">
-              <div class="chip-swatch">💳</div>
-              <div class="label">LARGE CHIP</div>
-            </div>
-          </div>
+    # Tint function objects
+    # Function type 4 (PostScript calculator):
+    # CutContour: input tint → output 0 t 0 0 (magenta channel)
+    cut_func_str = b"{ 0 exch 1 exch sub 0 0 }"  # {t} → {0, 1-t, 0, 0} ... simplified
+    # Use type 2 (exponential) for simplicity: just map tint directly
+    # Actually simplest: type 4 with direct mapping
+    cut_func_str  = b"{ dup 0 mul exch dup 1 mul exch dup 0 mul exch 0 mul }"
+    perf_func_str = b"{ dup 1 mul exch dup 0 mul exch dup 1 mul exch 0 mul }"
 
-          <div class="qty-row">
-            <label class="field-label">Quantity</label>
-            <input type="number" min="1" step="1" value="1" class="qtyInput">
-          </div>
+    buf = io.BytesIO()
+    buf.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = {}
 
-          <label class="dropzone" data-action="dropzone">
-            <div class="icon">🖼️</div>
-            <div><span class="cta">Click to upload</span> or drag image here</div>
-            <div class="hint">JPG &middot; PNG &middot; WEBP &middot; up to 25MB</div>
-            <div class="filename"></div>
-            <input type="file" accept="image/jpeg,image/png,image/webp" class="fileInput">
-          </label>
+    def wobj(n, header, stream=None):
+        offsets[n] = buf.tell()
+        buf.write(f"{n} 0 obj\n".encode())
+        if stream is not None:
+            h2 = header.rstrip()
+            # inject /Length
+            h2 = h2.rstrip('>').rstrip() + f" /Length {len(stream)} >>"
+            buf.write(h2.encode())
+            buf.write(b"\nstream\n")
+            buf.write(stream)
+            buf.write(b"\nendstream\n")
+        else:
+            buf.write(header.encode())
+        buf.write(b"endobj\n")
 
-          <div class="field-label">Card Background</div>
-          <div class="bg-swatches">
-            ${BG_COLORS.map((c,i)=>`<div class="bg-swatch${i===0?' selected':''}" style="background:${c}" data-bg="${c}"></div>`).join('')}
-          </div>
+    # Obj 1: CutContour tint function (PostScript type 4)
+    wobj(1, f"<< /FunctionType 4 /Domain [0 1] /Range [0 1 0 1 0 1 0 1]>>",
+         cut_func_str)
 
-          <div class="adjust-title">Adjust Position</div>
-          <div class="slider-row">
-            <span>Scale</span>
-            <input type="range" class="scaleSlider" min="20" max="300" value="100">
-            <span class="val scaleVal">100%</span>
-          </div>
-          <div class="slider-row">
-            <span>Move X</span>
-            <input type="range" class="moveXSlider" min="-40" max="40" value="0">
-            <span class="val moveXVal">0</span>
-          </div>
-          <div class="slider-row">
-            <span>Move Y</span>
-            <input type="range" class="moveYSlider" min="-40" max="40" value="0">
-            <span class="val moveYVal">0</span>
-          </div>
-          <div class="slider-row">
-            <span>Rotate</span>
-            <input type="range" class="rotateSlider" min="-180" max="180" value="0">
-            <span class="val rotateVal">0&deg;</span>
-          </div>
-          <button type="button" class="reset-btn" data-action="reset">Reset position</button>
-        </div>
+    # Obj 2: PerfCutContour tint function
+    wobj(2, f"<< /FunctionType 4 /Domain [0 1] /Range [0 1 0 1 0 1 0 1]>>",
+         perf_func_str)
 
-        <div class="preview-col">
-          <div class="preview-label">Live Preview</div>
-          <div class="preview-frame">
-            <canvas width="${PXW}" height="${PXH}"></canvas>
-            <div class="chip-guide"></div>
-          </div>
-          <div class="preview-caption">Drag on card to reposition</div>
-        </div>
-      </div>
-    `;
-    return el;
-  }
+    # Obj 3: CutContour colorspace array
+    wobj(3, "[/Separation /CutContour /DeviceCMYK 1 0 R]\n")
 
-  function positionChipGuide(el, design){
-    const guide = el.querySelector('.chip-guide');
-    const chip = CHIPS[design.chipType];
-    const pctX = (BLEED + chip.x) / PAGE_W * 100;
-    const pctY = (BLEED + chip.y) / PAGE_H * 100;
-    const pctW = chip.w / PAGE_W * 100;
-    const pctH = chip.h / PAGE_H * 100;
-    guide.style.left = pctX + '%';
-    guide.style.top = pctY + '%';
-    guide.style.width = pctW + '%';
-    guide.style.height = pctH + '%';
-  }
+    # Obj 4: PerfCutContour colorspace array
+    wobj(4, "[/Separation /PerfCutContour /DeviceCMYK 2 0 R]\n")
 
-  function summaryLine(d, idx){
-    const label = d.chipType === 'large' ? 'Large Chip' : 'Standard Chip';
-    return `Design ${idx+1}: ${label}, Qty ${d.quantity}`;
-  }
+    # Obj 5: Image XObject
+    wobj(5,
+        f"<< /Type /XObject /Subtype /Image "
+        f"/Width {iw} /Height {ih} "
+        f"/ColorSpace /DeviceRGB /BitsPerComponent 8 "
+        f"/Filter /FlateDecode >>",
+        zlib.compress(img.tobytes(), 6))
 
-  function updateIndexLabels(){
-    designs.forEach((d, i) => {
-      d.indexLabel = i + 1;
-      const h3 = d.el.querySelector('h3');
-      if (h3) h3.textContent = `Design ${d.indexLabel}`;
-      const removeBtn = d.el.querySelector('[data-action="remove"]');
-      if (removeBtn) removeBtn.style.display = designs.length > 1 ? '' : 'none';
-    });
-  }
+    # Obj 6: Content stream
+    # Use named colorspace resources /CutCS and /PerfCS
+    # cs = set non-stroking colorspace, CS = set stroking colorspace
+    # sc/SC = set color
+    stream = (
+        # Draw image clipped to page shape
+        f"q {page_clip} W n "
+        f"{dw:.4f} 0 0 {dh:.4f} {dx:.4f} {dy:.4f} cm /Im1 Do Q\n"
 
-  function addDesign(){
-    if (designs.length >= MAX_DESIGNS) return;
-    const design = {
-      id: nextId++, indexLabel: designs.length + 1,
-      chipType: 'standard', quantity: 1, file: null, imgEl: null,
-      scale: 1, moveX: 0, moveY: 0, rotate: 0, bgColor: BG_COLORS[0],
-    };
-    const el = createDesignCard(design);
-    design.el = el;
-    design.canvasEl = el.querySelector('canvas');
-    document.getElementById('designsContainer').appendChild(el);
-    wireDesignCard(design);
-    positionChipGuide(el, design);
-    redraw(design);
-    designs.push(design);
-    updateIndexLabels();
-    updateAddButtonState();
-  }
+        # PerfCutContour path — full cut outer edge
+        # Select spot colorspace, set stroke to tint=1, no fill
+        f"/PerfCS CS 1 SCN 0.001 w\n"
+        f"{perf_path} S\n"
 
-  function removeDesign(design){
-    design.el.remove();
-    designs = designs.filter(d => d.id !== design.id);
-    updateIndexLabels();
-    updateAddButtonState();
-  }
+        # CutContour path — card edge kiss cut
+        f"/CutCS CS 1 SCN 0.001 w\n"
+        f"{card_path} S\n"
 
-  function updateAddButtonState(){
-    document.getElementById('addDesignBtn').style.display =
-      designs.length >= MAX_DESIGNS ? 'none' : '';
-  }
+        # CutContour path — chip hole kiss cut (reuse same CS)
+        f"{chip_path} S\n"
+    )
+    stream_comp = zlib.compress(stream.encode(), 6)
+    wobj(6, f"<< /Filter /FlateDecode >>", stream_comp)
 
-  function loadFile(design, file){
-    design.file = file;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = function(){
-      design.imgEl = img;
-      design.el.querySelector('.dropzone').classList.add('has-file');
-      design.el.querySelector('.filename').textContent = file.name;
-      redraw(design);
-    };
-    img.src = url;
-  }
+    # Obj 7: Page — with ColorSpace resource dict referencing spot color arrays
+    wobj(7,
+        f"<< /Type /Page /Parent 8 0 R "
+        f"/MediaBox [0 0 {PW:.4f} {PH:.4f}] "
+        f"/Contents 6 0 R "
+        f"/Resources << "
+        f"/XObject << /Im1 5 0 R >> "
+        f"/ColorSpace << /CutCS 3 0 R /PerfCS 4 0 R >> "
+        f">> >>\n")
 
-  function wireDesignCard(design){
-    const el = design.el;
+    # Obj 8: Pages
+    wobj(8, "<< /Type /Pages /Kids [7 0 R] /Count 1 >>\n")
 
-    el.querySelectorAll('.chip-choice').forEach(choice => {
-      choice.addEventListener('click', () => {
-        el.querySelectorAll('.chip-choice').forEach(c => c.classList.remove('selected'));
-        choice.classList.add('selected');
-        design.chipType = choice.dataset.chip;
-        positionChipGuide(el, design);
-      });
-    });
+    # Obj 9: Catalog
+    wobj(9, "<< /Type /Catalog /Pages 8 0 R >>\n")
 
-    el.querySelectorAll('.bg-swatch').forEach(sw => {
-      sw.addEventListener('click', () => {
-        el.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('selected'));
-        sw.classList.add('selected');
-        design.bgColor = sw.dataset.bg;
-        redraw(design);
-      });
-    });
+    xref_pos = buf.tell()
+    buf.write(b"xref\n0 10\n0000000000 65535 f \n")
+    for i in range(1, 10):
+        buf.write(f"{offsets[i]:010d} 00000 n \n".encode())
+    buf.write(f"trailer\n<< /Size 10 /Root 9 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode())
 
-    el.querySelector('.qtyInput').addEventListener('input', e => {
-      design.quantity = Math.max(1, parseInt(e.target.value, 10) || 1);
-    });
+    return buf.getvalue()
 
-    const fileInput = el.querySelector('.fileInput');
-    const dropzone = el.querySelector('[data-action="dropzone"]');
-    fileInput.addEventListener('change', e => {
-      if (e.target.files && e.target.files[0]) loadFile(design, e.target.files[0]);
-    });
-    dropzone.addEventListener('dragover', e => e.preventDefault());
-    dropzone.addEventListener('drop', e => {
-      e.preventDefault();
-      if (e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(design, e.dataTransfer.files[0]);
-    });
 
-    function bindSlider(cls, key, valEl, fmt){
-      const input = el.querySelector(cls);
-      input.addEventListener('input', () => {
-        design[key] = parseFloat(input.value);
-        el.querySelector(valEl).textContent = fmt(design[key]);
-        redraw(design);
-      });
-    }
-    // Scale slider stores whole percent (20-300); convert to a multiplier on read.
-    el.querySelector('.scaleSlider').addEventListener('input', function(){
-      design.scale = parseFloat(this.value) / 100;
-      el.querySelector('.scaleVal').textContent = this.value + '%';
-      redraw(design);
-    });
-    bindSlider('.moveXSlider', 'moveX', '.moveXVal', v => Math.round(v));
-    bindSlider('.moveYSlider', 'moveY', '.moveYVal', v => Math.round(v));
-    bindSlider('.rotateSlider', 'rotate', '.rotateVal', v => Math.round(v) + '°');
+def send_email(to_addr, subject, body, attachments):
+    smtp_user = os.environ.get('SMTP_USER', '')
+    smtp_pass = os.environ.get('SMTP_PASS', '')
+    if not smtp_user or not smtp_pass:
+        print("WARNING: SMTP credentials not set"); return False
+    msg = MIMEMultipart()
+    msg['From']=smtp_user; msg['To']=to_addr; msg['Subject']=subject
+    msg.attach(MIMEText(body,'plain'))
+    for fname,data in attachments:
+        part=MIMEBase('application','pdf'); part.set_payload(data)
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition',f'attachment; filename="{fname}"')
+        msg.attach(part)
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com',465) as s:
+            s.login(smtp_user,smtp_pass); s.sendmail(smtp_user,to_addr,msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Email error: {e}"); return False
 
-    el.querySelector('[data-action="reset"]').addEventListener('click', () => {
-      design.scale = 1; design.moveX = 0; design.moveY = 0; design.rotate = 0;
-      el.querySelector('.scaleSlider').value = 100;
-      el.querySelector('.moveXSlider').value = 0;
-      el.querySelector('.moveYSlider').value = 0;
-      el.querySelector('.rotateSlider').value = 0;
-      el.querySelector('.scaleVal').textContent = '100%';
-      el.querySelector('.moveXVal').textContent = '0';
-      el.querySelector('.moveYVal').textContent = '0';
-      el.querySelector('.rotateVal').textContent = '0°';
-      redraw(design);
-    });
 
-    el.querySelector('[data-action="remove"]').addEventListener('click', () => removeDesign(design));
+@app.route('/', methods=['GET'])
+def root(): return jsonify({'status':'ok','service':'Dapper Threads PDF Generator'})
 
-    // Drag-to-reposition directly on the preview.
-    const frame = el.querySelector('.preview-frame');
-    let dragging = false, lastX = 0, lastY = 0;
-    frame.addEventListener('mousedown', e => {
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
-    });
-    window.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      const rect = frame.getBoundingClientRect();
-      const mmPerPxOnScreen = PAGE_W / rect.width;
-      design.moveX += (e.clientX - lastX) * mmPerPxOnScreen;
-      design.moveY += (e.clientY - lastY) * mmPerPxOnScreen;
-      design.moveX = Math.max(-40, Math.min(40, design.moveX));
-      design.moveY = Math.max(-40, Math.min(40, design.moveY));
-      lastX = e.clientX; lastY = e.clientY;
-      el.querySelector('.moveXSlider').value = design.moveX;
-      el.querySelector('.moveYSlider').value = design.moveY;
-      el.querySelector('.moveXVal').textContent = Math.round(design.moveX);
-      el.querySelector('.moveYVal').textContent = Math.round(design.moveY);
-      redraw(design);
-    });
-    window.addEventListener('mouseup', () => { dragging = false; });
-  }
+@app.route('/health', methods=['GET'])
+def health(): return jsonify({'status':'ok','service':'Dapper Threads PDF Generator'})
 
-  document.getElementById('addDesignBtn').addEventListener('click', addDesign);
+@app.route('/generate-pdf', methods=['POST'])
+def generate_pdf_endpoint():
+    try:
+        order_info = {k: request.form.get(k,'') for k in ['first_name','last_name','email','order_number']}
+        designs = json.loads(request.form.get('designs','[]'))
+        print(f"Order: {order_info['first_name']} {order_info['last_name']} #{order_info['order_number']}, {len(designs)} designs")
 
-  // ── Submission ─────────────────────────────────────────────────────────────
-  function validate(){
-    const first = document.getElementById('firstName').value.trim();
-    const last = document.getElementById('lastName').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const orderNumber = document.getElementById('orderNumber').value.trim();
-    if (!first || !last || !email || !orderNumber){
-      return 'Please fill in your order details and upload at least one design.';
-    }
-    if (designs.length === 0 || !designs.some(d => d.file)){
-      return 'Please fill in your order details and upload at least one design.';
-    }
-    for (const d of designs){
-      if (!d.file) return `Design ${d.indexLabel} is missing an uploaded image.`;
-    }
-    return null;
-  }
+        chip_labels = {'standard':'Standard Chip','large':'Large Chip'}
+        attachments = []
+        failed = []  # [{'index':.., 'chip':.., 'reason':..}]
 
-  function canvasToBlob(canvas){
-    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  }
+        designs_ok = 0
 
-  async function handleSubmit(){
-    const msgEl = document.getElementById('validationMsg');
-    const err = validate();
-    if (err){ msgEl.textContent = err; return; }
-    msgEl.textContent = '';
+        for i,design in enumerate(designs):
+            fk = f'image_{i+1}'
+            if fk not in request.files: continue
+            chip  = design.get('chip_type','standard')
+            didx  = design.get('design_index',i+1)
+            try:
+                qty = max(1, int(design.get('quantity',1)))
+            except (TypeError, ValueError):
+                qty = 1
+            img_b = request.files[fk].read()
+            print(f"  Design {didx}: {chip} chip, qty {qty}, {len(img_b)} bytes")
 
-    const submitBtn = document.getElementById('submitBtn');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Submitting…';
+            ok, reason = validate_upload(img_b)
+            if not ok:
+                print(f"  ⚠ Design {didx} FAILED validation: {reason}")
+                failed.append({'index': didx, 'chip': chip, 'qty': qty, 'reason': reason})
+                continue
 
-    const first = document.getElementById('firstName').value.trim();
-    const last = document.getElementById('lastName').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const orderNumber = document.getElementById('orderNumber').value.trim();
+            pdf = generate_pdf(img_b, chip, order_info)
+            designs_ok += 1
+            # One PDF file per requested copy — so the inbox has exactly as
+            # many files as cards to produce, no manual duplicating needed.
+            # Naming convention: CustomerName_Order#_Design#_CopyXofX.pdf
+            customer_name = f"{order_info['first_name']}{order_info['last_name']}"
+            for copy_n in range(1, qty+1):
+                fname = f"{customer_name}_Order{order_info['order_number']}_Design{didx}_Copy{copy_n}of{qty}.pdf"
+                attachments.append((fname,pdf))
+            print(f"  → {len(pdf):,} bytes × {qty} copies")
 
-    try {
-      // Render each design's canvas to a final PNG blob (freshest draw first).
-      const blobs = [];
-      for (const d of designs){
-        redraw(d);
-        const blob = await canvasToBlob(d.canvasEl);
-        const fname = `DapperThreads_${first}${last}_Order${orderNumber}_Design${d.indexLabel}_${d.chipType}chip_qty${d.quantity}_300dpi.png`;
-        blobs.push({ design: d, blob, fname });
-      }
+        if not attachments and not failed: return jsonify({'error':'No valid images'}),400
 
-      // Trigger local downloads.
-      blobs.forEach(({ blob, fname }) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = fname;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      });
+        design_lines = '\n'.join([f"  Design {d.get('design_index',i+1)}: {chip_labels.get(d.get('chip_type','standard'))}, Qty {d.get('quantity',1)}" for i,d in enumerate(designs)])
 
-      // 1) Netlify Forms submission (record-keeping).
-      const netlifyForm = new FormData();
-      netlifyForm.append('form-name', 'card-skin-order');
-      netlifyForm.append('first-name', first);
-      netlifyForm.append('last-name', last);
-      netlifyForm.append('email', email);
-      netlifyForm.append('order-number', orderNumber);
-      netlifyForm.append('designs-summary', designs.map((d,i) => summaryLine(d,i)).join(' | '));
-      let overflow = '';
-      blobs.slice(0, 10).forEach(({ blob, fname }, i) => {
-        netlifyForm.append(`design-file-${i+1}`, blob, fname);
-      });
-      if (blobs.length > 10){
-        overflow = `${blobs.length - 10} additional design(s) not attached — see Render API submission.`;
-      }
-      netlifyForm.append('overflow-notice', overflow);
-      netlifyForm.append('bot-field', '');
-      await fetch('/', { method: 'POST', body: netlifyForm }).catch(() => {});
+        subject = f"New Card Skin Order — {order_info['first_name']} {order_info['last_name']} — Order #{order_info['order_number']}"
+        if failed:
+            subject += " — ⚠ design upload issue"
 
-      // 2) Render API submission (this is what actually generates print PDFs & emails).
-      const apiForm = new FormData();
-      apiForm.append('first_name', first);
-      apiForm.append('last_name', last);
-      apiForm.append('email', email);
-      apiForm.append('order_number', orderNumber);
-      apiForm.append('designs', JSON.stringify(designs.map((d,i) => ({
-        design_index: d.indexLabel, chip_type: d.chipType, quantity: d.quantity,
-      }))));
-      blobs.forEach(({ blob, fname }, i) => {
-        apiForm.append(`image_${i+1}`, blob, fname);
-      });
-      await fetch(RENDER_API, { method: 'POST', body: apiForm }).catch(() => {});
+        body = (f"New order received.\n\n"
+                f"Name: {order_info['first_name']} {order_info['last_name']}\n"
+                f"Email: {order_info['email']}\n"
+                f"Order #: {order_info['order_number']}\n"
+                f"Designs submitted: {len(designs)}\n"
+                f"Designs processed OK: {designs_ok}\n"
+                f"Designs failed: {len(failed)}\n"
+                f"Total PDF files attached: {len(attachments)} (one per card, quantities already expanded)\n\n"
+                f"{design_lines}\n")
 
-      document.getElementById('successModal').classList.add('show');
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = '✓ Submit My Order';
-    }
-  }
+        if failed:
+            failed_lines = '\n'.join([f"  Design {f['index']} ({chip_labels.get(f['chip'],'Unknown')}): {f['reason']}" for f in failed])
+            body += (f"\n⚠️ The following design(s) did NOT upload correctly and were NOT included as PDFs:\n"
+                      f"{failed_lines}\n\n"
+                      f"The customer has been emailed asking them to resubmit these specific design(s).\n")
 
-  document.getElementById('submitBtn').addEventListener('click', handleSubmit);
-  document.getElementById('modalDoneBtn').addEventListener('click', () => {
-    document.getElementById('successModal').classList.remove('show');
-  });
+        body += ("\nPDF files use proper /Separation spot colors — drop directly into VersaWorks 6.\n"
+                 "  CutContour = kiss cut (card edge + chip hole)\n"
+                 "  PerfCutContour = full cut (outer edge)\n")
 
-  // Start with one design slot.
-  addDesign();
-})();
-</script>
-</body>
-</html>
+        sent = send_email('erika@dapperthreadsus.com', subject, body, attachments)
+
+        if failed:
+            failed_customer_lines = '\n'.join([f"  Design {f['index']} ({chip_labels.get(f['chip'],'')})" for f in failed])
+            cust_subject = f"Action Needed — Your Dapper Threads Order #{order_info['order_number']}"
+            cust_body = (f"Hi {order_info['first_name']},\n\n"
+                         f"Thanks for your order! We received {len(attachments)} of your {len(designs)} design(s) successfully "
+                         f"and are already getting started on those.\n\n"
+                         f"Unfortunately the following design(s) didn't upload correctly and could not be processed:\n"
+                         f"{failed_customer_lines}\n\n"
+                         f"This usually happens when an image doesn't finish uploading (e.g. a slow or interrupted connection). "
+                         f"Please resubmit just these design(s) here: {FORM_URL}\n"
+                         f"Reference Order #{order_info['order_number']} so we can match it up with the rest of your order.\n\n"
+                         f"Your order ships within 10 business days of us receiving all designs.\n\n"
+                         f"Questions? Email support@dapperthreadsus.com\n\n"
+                         f"— The Dapper Threads Team")
+        else:
+            cust_subject = f"Your Dapper Threads Order #{order_info['order_number']} — Design Received!"
+            cust_body = (f"Hi {order_info['first_name']},\n\n"
+                         f"Thank you! We've received your design(s) and will get started right away.\n\n"
+                         f"Order #: {order_info['order_number']}\n"
+                         f"Designs: {len(designs)}\n\n"
+                         f"Your order ships within 10 business days.\n\n"
+                         f"Questions? Email support@dapperthreadsus.com\n\n"
+                         f"— The Dapper Threads Team")
+
+        send_email(order_info['email'], cust_subject, cust_body, [])
+
+        return jsonify({
+            'status': 'success' if not failed else 'partial',
+            'designs_ok': designs_ok,
+            'files_attached': len(attachments),
+            'failed': failed,
+            'email_sent': sent
+        })
+    except Exception as e:
+        traceback.print_exc(); return jsonify({'error':str(e)}),500
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT',10000)), debug=False)
