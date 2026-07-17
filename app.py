@@ -5,7 +5,7 @@ from email.mime.text import MIMEText
 from email import encoders
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from PIL import Image
+from PIL import Image, ImageStat
 
 app = Flask(__name__)
 CORS(app, origins=["https://visionary-daifuku-f59ee5.netlify.app", "http://localhost"])
@@ -14,6 +14,8 @@ CARD_W, CARD_H, CORNER = 85.6, 53.98, 3.18
 BLEED, CHIP_BLEED       = 1.0, 1.0
 PAGE_W = CARD_W + BLEED*2
 PAGE_H = CARD_H + BLEED*2
+
+FORM_URL = "https://visionary-daifuku-f59ee5.netlify.app"
 
 CHIPS = {
     'standard': dict(x=9.63-0.50-0.75, y=18.73-0.75,  w=11.52+1.50, h=8.54+1.50,  r=1.5),
@@ -30,6 +32,64 @@ def rrect(x, y, w, h, r):
             f"{x+w:.4f} {y+h-r:.4f} l {x+w:.4f} {y+h:.4f} {x+w-r:.4f} {y+h:.4f} v "
             f"{x+r:.4f} {y+h:.4f} l {x:.4f} {y+h:.4f} {x:.4f} {y+h-r:.4f} v "
             f"{x:.4f} {y+r:.4f} l {x:.4f} {y:.4f} {x+r:.4f} {y:.4f} v h")
+
+
+# ── Upload validation ────────────────────────────────────────────────────────
+# Catches two distinct failure modes we've seen in the wild:
+#   1. Truly corrupted/truncated files (network drop mid-upload) — PIL raises
+#      when we force a full decode via img.load().
+#   2. Files that decode fine (valid PNG/JPEG) but the *browser* exported the
+#      canvas before a tiled background pattern finished loading, leaving a
+#      solid black block covering part of the frame. This doesn't raise any
+#      decode error, so we need a content heuristic to catch it.
+
+def looks_incomplete(img, band_count=20, blank_threshold=6, run_fraction=0.35):
+    """Flag images where a contiguous block of near-black bands sits at the
+    top or bottom edge of the frame, suggesting the design didn't fully
+    render before export. Real dark/black designs still have variance from
+    prints/text/borders; a flat, uniform black block run is the signature of
+    a failed render, not an intentional dark background."""
+    w, h = img.size
+    band_h = max(1, h // band_count)
+    means = []
+    for i in range(band_count):
+        top = i * band_h
+        bottom = h if i == band_count - 1 else top + band_h
+        band = img.crop((0, top, w, bottom))
+        stat = ImageStat.Stat(band)
+        means.append(sum(stat.mean) / len(stat.mean))
+
+    def longest_blank_run_from(edge):
+        seq = means if edge == 'top' else list(reversed(means))
+        run = 0
+        for m in seq:
+            if m <= blank_threshold:
+                run += 1
+            else:
+                break
+        return run
+
+    worst_run = max(longest_blank_run_from('top'), longest_blank_run_from('bottom'))
+    return worst_run >= band_count * run_fraction
+
+
+def validate_upload(image_bytes):
+    """Returns (ok, reason). reason is None when ok is True."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img.load()  # forces full decode; raises on truncated/corrupted data
+    except Exception as e:
+        return False, f"file appears corrupted or incomplete ({e})"
+
+    try:
+        img = img.convert('RGB')
+        if looks_incomplete(img):
+            return False, "design appears to be missing content (partial render)"
+    except Exception as e:
+        return False, f"could not process image ({e})"
+
+    return True, None
+
 
 def generate_pdf(image_bytes, chip_type, order_info):
     chip = CHIPS.get(chip_type, CHIPS['standard'])
@@ -200,7 +260,10 @@ def generate_pdf_endpoint():
         designs = json.loads(request.form.get('designs','[]'))
         print(f"Order: {order_info['first_name']} {order_info['last_name']} #{order_info['order_number']}, {len(designs)} designs")
 
+        chip_labels = {'standard':'Standard Chip','large':'Large Chip'}
         attachments = []
+        failed = []  # [{'index':.., 'chip':.., 'reason':..}]
+
         for i,design in enumerate(designs):
             fk = f'image_{i+1}'
             if fk not in request.files: continue
@@ -209,24 +272,80 @@ def generate_pdf_endpoint():
             didx  = design.get('design_index',i+1)
             img_b = request.files[fk].read()
             print(f"  Design {didx}: {chip} chip, {len(img_b)} bytes")
+
+            ok, reason = validate_upload(img_b)
+            if not ok:
+                print(f"  ⚠ Design {didx} FAILED validation: {reason}")
+                failed.append({'index': didx, 'chip': chip, 'qty': qty, 'reason': reason})
+                continue
+
             pdf   = generate_pdf(img_b, chip, order_info)
             fname = (f"DapperThreads_{order_info['first_name']}{order_info['last_name']}"
                      f"_Order{order_info['order_number']}_Design{didx}_{chip}chip_qty{qty}_PRINT+CUT.pdf")
             attachments.append((fname,pdf))
             print(f"  → {len(pdf):,} bytes")
 
-        if not attachments: return jsonify({'error':'No valid images'}),400
+        if not attachments and not failed: return jsonify({'error':'No valid images'}),400
 
-        chip_labels = {'standard':'Standard Chip','large':'Large Chip'}
         design_lines = '\n'.join([f"  Design {d.get('design_index',i+1)}: {chip_labels.get(d.get('chip_type','standard'))}, Qty {d.get('quantity',1)}" for i,d in enumerate(designs)])
-        subject = f"New Card Skin Order — {order_info['first_name']} {order_info['last_name']} — Order #{order_info['order_number']}"
-        body = f"New order received.\n\nName: {order_info['first_name']} {order_info['last_name']}\nEmail: {order_info['email']}\nOrder #: {order_info['order_number']}\nDesigns: {len(designs)}\n\n{design_lines}\n\nPDF files use proper /Separation spot colors — drop directly into VersaWorks 6.\n  CutContour = kiss cut (card edge + chip hole)\n  PerfCutContour = full cut (outer edge)\n"
-        sent = send_email('erika@dapperthreadsus.com', subject, body, attachments)
-        send_email(order_info['email'],
-            f"Your Dapper Threads Order #{order_info['order_number']} — Design Received!",
-            f"Hi {order_info['first_name']},\n\nThank you! We've received your design(s) and will get started right away.\n\nOrder #: {order_info['order_number']}\nDesigns: {len(designs)}\n\nYour order ships within 10 business days.\n\nQuestions? Email support@dapperthreadsus.com\n\n— The Dapper Threads Team", [])
 
-        return jsonify({'status':'success','designs':len(attachments),'email_sent':sent})
+        subject = f"New Card Skin Order — {order_info['first_name']} {order_info['last_name']} — Order #{order_info['order_number']}"
+        if failed:
+            subject += " — ⚠ design upload issue"
+
+        body = (f"New order received.\n\n"
+                f"Name: {order_info['first_name']} {order_info['last_name']}\n"
+                f"Email: {order_info['email']}\n"
+                f"Order #: {order_info['order_number']}\n"
+                f"Designs submitted: {len(designs)}\n"
+                f"Designs processed OK: {len(attachments)}\n"
+                f"Designs failed: {len(failed)}\n\n"
+                f"{design_lines}\n")
+
+        if failed:
+            failed_lines = '\n'.join([f"  Design {f['index']} ({chip_labels.get(f['chip'],'Unknown')}): {f['reason']}" for f in failed])
+            body += (f"\n⚠️ The following design(s) did NOT upload correctly and were NOT included as PDFs:\n"
+                      f"{failed_lines}\n\n"
+                      f"The customer has been emailed asking them to resubmit these specific design(s).\n")
+
+        body += ("\nPDF files use proper /Separation spot colors — drop directly into VersaWorks 6.\n"
+                 "  CutContour = kiss cut (card edge + chip hole)\n"
+                 "  PerfCutContour = full cut (outer edge)\n")
+
+        sent = send_email('erika@dapperthreadsus.com', subject, body, attachments)
+
+        if failed:
+            failed_customer_lines = '\n'.join([f"  Design {f['index']} ({chip_labels.get(f['chip'],'')})" for f in failed])
+            cust_subject = f"Action Needed — Your Dapper Threads Order #{order_info['order_number']}"
+            cust_body = (f"Hi {order_info['first_name']},\n\n"
+                         f"Thanks for your order! We received {len(attachments)} of your {len(designs)} design(s) successfully "
+                         f"and are already getting started on those.\n\n"
+                         f"Unfortunately the following design(s) didn't upload correctly and could not be processed:\n"
+                         f"{failed_customer_lines}\n\n"
+                         f"This usually happens when an image doesn't finish uploading (e.g. a slow or interrupted connection). "
+                         f"Please resubmit just these design(s) here: {FORM_URL}\n"
+                         f"Reference Order #{order_info['order_number']} so we can match it up with the rest of your order.\n\n"
+                         f"Your order ships within 10 business days of us receiving all designs.\n\n"
+                         f"Questions? Email support@dapperthreadsus.com\n\n"
+                         f"— The Dapper Threads Team")
+        else:
+            cust_subject = f"Your Dapper Threads Order #{order_info['order_number']} — Design Received!"
+            cust_body = (f"Hi {order_info['first_name']},\n\n"
+                         f"Thank you! We've received your design(s) and will get started right away.\n\n"
+                         f"Order #: {order_info['order_number']}\n"
+                         f"Designs: {len(designs)}\n\n"
+                         f"Your order ships within 10 business days.\n\n"
+                         f"Questions? Email support@dapperthreadsus.com\n\n"
+                         f"— The Dapper Threads Team")
+
+        send_email(order_info['email'], cust_subject, cust_body, [])
+
+        return jsonify({
+            'status': 'success' if not failed else 'partial',
+            'designs': len(attachments),
+            'failed': failed,
+            'email_sent': sent
+        })
     except Exception as e:
         traceback.print_exc(); return jsonify({'error':str(e)}),500
 
