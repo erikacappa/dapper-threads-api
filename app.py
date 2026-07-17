@@ -226,25 +226,54 @@ def generate_pdf(image_bytes, chip_type, order_info):
     return buf.getvalue()
 
 
+# Gmail rejects any outgoing message once its total (post-base64) size
+# exceeds ~25MB. Base64 inflates raw attachment bytes by ~1.37x, so we cap
+# each email's raw attachment payload well under that line. Large orders
+# (many designs/copies) are automatically split across multiple emails
+# instead of silently failing to send at all.
+MAX_BATCH_BYTES = 15 * 1024 * 1024  # 15MB raw ≈ ~20.5MB after base64
+
 def send_email(to_addr, subject, body, attachments):
     smtp_user = os.environ.get('SMTP_USER', '')
     smtp_pass = os.environ.get('SMTP_PASS', '')
     if not smtp_user or not smtp_pass:
         print("WARNING: SMTP credentials not set"); return False
-    msg = MIMEMultipart()
-    msg['From']=smtp_user; msg['To']=to_addr; msg['Subject']=subject
-    msg.attach(MIMEText(body,'plain'))
-    for fname,data in attachments:
-        part=MIMEBase('application','pdf'); part.set_payload(data)
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition',f'attachment; filename="{fname}"')
-        msg.attach(part)
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com',465) as s:
-            s.login(smtp_user,smtp_pass); s.sendmail(smtp_user,to_addr,msg.as_string())
-        return True
-    except Exception as e:
-        print(f"Email error: {e}"); return False
+
+    # Split attachments into size-safe batches.
+    batches = []
+    current, current_size = [], 0
+    for fname, data in attachments:
+        if current and current_size + len(data) > MAX_BATCH_BYTES:
+            batches.append(current)
+            current, current_size = [], 0
+        current.append((fname, data))
+        current_size += len(data)
+    if current or not attachments:
+        batches.append(current)
+
+    total_parts = len(batches)
+    all_ok = True
+    for idx, batch in enumerate(batches, start=1):
+        part_subject = subject if total_parts == 1 else f"{subject} (Part {idx} of {total_parts})"
+        part_body = body if total_parts == 1 else (
+            f"{body}\n\nThis order's files were split across {total_parts} emails "
+            f"due to attachment size — this is part {idx} of {total_parts}."
+        )
+        msg = MIMEMultipart()
+        msg['From']=smtp_user; msg['To']=to_addr; msg['Subject']=part_subject
+        msg.attach(MIMEText(part_body,'plain'))
+        for fname,data in batch:
+            part=MIMEBase('application','pdf'); part.set_payload(data)
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition',f'attachment; filename="{fname}"')
+            msg.attach(part)
+        try:
+            with smtplib.SMTP_SSL('smtp.gmail.com',465) as s:
+                s.login(smtp_user,smtp_pass); s.sendmail(smtp_user,to_addr,msg.as_string())
+        except Exception as e:
+            print(f"Email error (part {idx} of {total_parts}): {e}")
+            all_ok = False
+    return all_ok
 
 
 @app.route('/', methods=['GET'])
