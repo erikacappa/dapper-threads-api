@@ -12,8 +12,26 @@ CORS(app, origins=["https://visionary-daifuku-f59ee5.netlify.app", "http://local
 
 CARD_W, CARD_H, CORNER = 85.6, 53.98, 3.18
 BLEED, CHIP_BLEED       = 1.0, 1.0
-PAGE_W = CARD_W + BLEED*2
-PAGE_H = CARD_H + BLEED*2
+INSET = 0.1  # perf cut sits this far inside the true outer sheet edge
+
+# The design frame (card + its own bleed) — this is the exact area the
+# uploaded design image covers. Unchanged from before; do not touch, since
+# the frontend exports its 300dpi PNG to match these dimensions exactly.
+CONTENT_W = CARD_W + BLEED*2   # 87.6
+CONTENT_H = CARD_H + BLEED*2   # 55.98
+
+# Extra pure-white vinyl margin added OUTSIDE the design frame, purely to
+# give the VG3 more room between the kiss cut (card edge) and the full perf
+# cut. The thin sliver of material that used to sit between them was
+# lifting during cutting and jamming the printer. This does not change the
+# design size, position, or the kiss-cut line at all — it only adds blank
+# space further out and moves the perf cut out to meet it.
+# Previous gap (kiss cut → perf cut) = BLEED - INSET = 0.9mm.
+# Adding PERF_MARGIN of the same size doubles the total gap to ~1.8mm.
+PERF_MARGIN = BLEED - INSET   # 0.9mm added → ~1.8mm total gap (2x)
+
+PAGE_W = CONTENT_W + PERF_MARGIN*2
+PAGE_H = CONTENT_H + PERF_MARGIN*2
 
 FORM_URL = "https://visionary-daifuku-f59ee5.netlify.app"
 
@@ -93,27 +111,38 @@ def validate_upload(image_bytes):
 
 def generate_pdf(image_bytes, chip_type, order_info):
     chip = CHIPS.get(chip_type, CHIPS['standard'])
-    PW, PH = pt(PAGE_W), pt(PAGE_H)
+    PW, PH = pt(PAGE_W), pt(PAGE_H)              # full physical sheet, incl. new perf margin
+    CW, CH = pt(CONTENT_W), pt(CONTENT_H)        # original design/bleed frame — unchanged size
 
     # Prepare image
     img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
     iw, ih = img.size
     img_comp = zlib.compress(img.tobytes(), 6)
 
-    # Image scale to cover full page
-    ia, ca = iw/ih, PAGE_W/PAGE_H
-    if ia > ca: dh=PH; dw=PH*ia; dx=(PW-dw)/2; dy=0
-    else:       dw=PW; dh=PW/ia; dx=0;          dy=(PH-dh)/2
+    # Image scale to cover the ORIGINAL content frame only — identical size/
+    # position math to before. The image is never stretched or resized to
+    # fill the new, larger sheet; it's simply placed (offset) within it.
+    ia, ca = iw/ih, CONTENT_W/CONTENT_H
+    if ia > ca: dh=CH; dw=CH*ia; dx=(CW-dw)/2; dy=0
+    else:       dw=CW; dh=CW/ia; dx=0;          dy=(CH-dh)/2
+    # Shift into position within the larger sheet — everything beyond this
+    # offset region is untouched vinyl (blank/white), out to the perf cut.
+    dx += pt(PERF_MARGIN)
+    dy += pt(PERF_MARGIN)
 
-    # Cut paths
-    INSET = 0.1
-    perf_path = rrect(INSET, INSET, PAGE_W-INSET*2, PAGE_H-INSET*2, CORNER+BLEED-INSET)
-    card_path = rrect(BLEED, BLEED, CARD_W, CARD_H, CORNER)
-    cx  = BLEED + chip['x'] + CHIP_BLEED
-    cy  = BLEED + CARD_H - chip['y'] - chip['h'] + CHIP_BLEED
+    # Cut paths — kiss cut (card_path) and chip cutout keep their original
+    # size and position, just translated outward by PERF_MARGIN since the
+    # sheet origin moved. The perf cut now runs near the edge of the new,
+    # larger sheet instead of the old one.
+    perf_path = rrect(INSET, INSET, PAGE_W-INSET*2, PAGE_H-INSET*2, CORNER+BLEED+PERF_MARGIN-INSET)
+    card_path = rrect(PERF_MARGIN+BLEED, PERF_MARGIN+BLEED, CARD_W, CARD_H, CORNER)
+    cx  = PERF_MARGIN + BLEED + chip['x'] + CHIP_BLEED
+    cy  = PERF_MARGIN + BLEED + CARD_H - chip['y'] - chip['h'] + CHIP_BLEED
     chip_path = rrect(cx, cy, chip['w']-CHIP_BLEED*2, chip['h']-CHIP_BLEED*2, max(0,chip['r']-CHIP_BLEED))
 
-    page_clip = rrect(0, 0, PAGE_W, PAGE_H, CORNER+BLEED)
+    # Image is clipped to the original content-frame shape/size, just
+    # repositioned — so it never bleeds into the new blank margin.
+    page_clip = rrect(PERF_MARGIN, PERF_MARGIN, CONTENT_W, CONTENT_H, CORNER+BLEED)
 
     # ── Build PDF objects ─────────────────────────────────────────────────────
     # We define spot colors as named resources in /ColorSpace dict on the page
