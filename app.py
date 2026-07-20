@@ -117,7 +117,11 @@ def generate_pdf(image_bytes, chip_type, order_info):
     # Prepare image
     img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
     iw, ih = img.size
-    img_comp = zlib.compress(img.tobytes(), 6)
+    # (Previously also compressed the raw image bytes here as `img_comp`,
+    # but that result was never used — the real compression for the PDF's
+    # image stream happens later, in the Obj 5 wobj() call below. Computing
+    # it twice roughly doubled the CPU time PDF generation spent on zlib
+    # per design, for no benefit — removed.)
 
     # Image scale to cover the ORIGINAL content frame only — identical size/
     # position math to before. The image is never stretched or resized to
