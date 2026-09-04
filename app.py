@@ -5,15 +5,35 @@ from email.mime.text import MIMEText
 from email import encoders
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from PIL import Image
+from PIL import Image, ImageStat
 
 app = Flask(__name__)
 CORS(app)  # Allow all origins
 
 CARD_W, CARD_H, CORNER = 85.6, 53.98, 3.18
 BLEED, CHIP_BLEED       = 1.0, 1.0
-PAGE_W = CARD_W + BLEED*2
-PAGE_H = CARD_H + BLEED*2
+INSET = 0.1  # perf cut sits this far inside the true outer sheet edge
+
+# The design frame (card + its own bleed) — this is the exact area the
+# uploaded design image covers. Unchanged from before; do not touch, since
+# the frontend exports its 300dpi PNG to match these dimensions exactly.
+CONTENT_W = CARD_W + BLEED*2   # 87.6
+CONTENT_H = CARD_H + BLEED*2   # 55.98
+
+# Extra pure-white vinyl margin added OUTSIDE the design frame, purely to
+# give the VG3 more room between the kiss cut (card edge) and the full perf
+# cut. The thin sliver of material that used to sit between them was
+# lifting during cutting and jamming the printer. This does not change the
+# design size, position, or the kiss-cut line at all — it only adds blank
+# space further out and moves the perf cut out to meet it.
+# Previous gap (kiss cut → perf cut) = BLEED - INSET = 0.9mm.
+# Adding PERF_MARGIN of the same size doubles the total gap to ~1.8mm.
+PERF_MARGIN = BLEED - INSET   # 0.9mm added → ~1.8mm total gap (2x)
+
+PAGE_W = CONTENT_W + PERF_MARGIN*2
+PAGE_H = CONTENT_H + PERF_MARGIN*2
+
+FORM_URL = "https://visionary-daifuku-f59ee5.netlify.app"
 
 CHIPS = {
     'standard': dict(x=9.63-0.50-0.75, y=18.73-0.75,  w=11.52+1.50, h=8.54+1.50,  r=1.5),
@@ -31,29 +51,102 @@ def rrect(x, y, w, h, r):
             f"{x+r:.4f} {y+h:.4f} l {x:.4f} {y+h:.4f} {x:.4f} {y+h-r:.4f} v "
             f"{x:.4f} {y+r:.4f} l {x:.4f} {y:.4f} {x+r:.4f} {y:.4f} v h")
 
+
+# ── Upload validation ────────────────────────────────────────────────────────
+# Catches two distinct failure modes we've seen in the wild:
+#   1. Truly corrupted/truncated files (network drop mid-upload) — PIL raises
+#      when we force a full decode via img.load().
+#   2. Files that decode fine (valid PNG/JPEG) but the *browser* exported the
+#      canvas before a tiled background pattern finished loading, leaving a
+#      solid black block covering part of the frame. This doesn't raise any
+#      decode error, so we need a content heuristic to catch it.
+
+def looks_incomplete(img, band_count=20, blank_threshold=6, run_fraction=0.35):
+    """Flag images where a contiguous block of near-black bands sits at the
+    top or bottom edge of the frame, suggesting the design didn't fully
+    render before export. Real dark/black designs still have variance from
+    prints/text/borders; a flat, uniform black block run is the signature of
+    a failed render, not an intentional dark background."""
+    w, h = img.size
+    band_h = max(1, h // band_count)
+    means = []
+    for i in range(band_count):
+        top = i * band_h
+        bottom = h if i == band_count - 1 else top + band_h
+        band = img.crop((0, top, w, bottom))
+        stat = ImageStat.Stat(band)
+        means.append(sum(stat.mean) / len(stat.mean))
+
+    def longest_blank_run_from(edge):
+        seq = means if edge == 'top' else list(reversed(means))
+        run = 0
+        for m in seq:
+            if m <= blank_threshold:
+                run += 1
+            else:
+                break
+        return run
+
+    worst_run = max(longest_blank_run_from('top'), longest_blank_run_from('bottom'))
+    return worst_run >= band_count * run_fraction
+
+
+def validate_upload(image_bytes):
+    """Returns (ok, reason). reason is None when ok is True."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img.load()  # forces full decode; raises on truncated/corrupted data
+    except Exception as e:
+        return False, f"file appears corrupted or incomplete ({e})"
+
+    try:
+        img = img.convert('RGB')
+        if looks_incomplete(img):
+            return False, "design appears to be missing content (partial render)"
+    except Exception as e:
+        return False, f"could not process image ({e})"
+
+    return True, None
+
+
 def generate_pdf(image_bytes, chip_type, order_info):
     chip = CHIPS.get(chip_type, CHIPS['standard'])
-    PW, PH = pt(PAGE_W), pt(PAGE_H)
+    PW, PH = pt(PAGE_W), pt(PAGE_H)              # full physical sheet, incl. new perf margin
+    CW, CH = pt(CONTENT_W), pt(CONTENT_H)        # original design/bleed frame — unchanged size
 
     # Prepare image
     img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
     iw, ih = img.size
-    img_comp = zlib.compress(img.tobytes(), 6)
+    # (Previously also compressed the raw image bytes here as `img_comp`,
+    # but that result was never used — the real compression for the PDF's
+    # image stream happens later, in the Obj 5 wobj() call below. Computing
+    # it twice roughly doubled the CPU time PDF generation spent on zlib
+    # per design, for no benefit — removed.)
 
-    # Image scale to cover full page
-    ia, ca = iw/ih, PAGE_W/PAGE_H
-    if ia > ca: dh=PH; dw=PH*ia; dx=(PW-dw)/2; dy=0
-    else:       dw=PW; dh=PW/ia; dx=0;          dy=(PH-dh)/2
+    # Image scale to cover the ORIGINAL content frame only — identical size/
+    # position math to before. The image is never stretched or resized to
+    # fill the new, larger sheet; it's simply placed (offset) within it.
+    ia, ca = iw/ih, CONTENT_W/CONTENT_H
+    if ia > ca: dh=CH; dw=CH*ia; dx=(CW-dw)/2; dy=0
+    else:       dw=CW; dh=CW/ia; dx=0;          dy=(CH-dh)/2
+    # Shift into position within the larger sheet — everything beyond this
+    # offset region is untouched vinyl (blank/white), out to the perf cut.
+    dx += pt(PERF_MARGIN)
+    dy += pt(PERF_MARGIN)
 
-    # Cut paths
-    INSET = 0.1
-    perf_path = rrect(INSET, INSET, PAGE_W-INSET*2, PAGE_H-INSET*2, CORNER+BLEED-INSET)
-    card_path = rrect(BLEED, BLEED, CARD_W, CARD_H, CORNER)
-    cx  = BLEED + chip['x'] + CHIP_BLEED
-    cy  = BLEED + CARD_H - chip['y'] - chip['h'] + CHIP_BLEED
+    # Cut paths — kiss cut (card_path) and chip cutout keep their original
+    # size and position, just translated outward by PERF_MARGIN since the
+    # sheet origin moved. The perf cut now runs near the edge of the new,
+    # larger sheet instead of the old one.
+    perf_path = rrect(INSET, INSET, PAGE_W-INSET*2, PAGE_H-INSET*2, CORNER+BLEED+PERF_MARGIN-INSET)
+    card_path = rrect(PERF_MARGIN+BLEED, PERF_MARGIN+BLEED, CARD_W, CARD_H, CORNER)
+    cx  = PERF_MARGIN + BLEED + chip['x'] + CHIP_BLEED
+    cy  = PERF_MARGIN + BLEED + CARD_H - chip['y'] - chip['h'] + CHIP_BLEED
     chip_path = rrect(cx, cy, chip['w']-CHIP_BLEED*2, chip['h']-CHIP_BLEED*2, max(0,chip['r']-CHIP_BLEED))
 
-    page_clip = rrect(0, 0, PAGE_W, PAGE_H, CORNER+BLEED)
+    # Image is clipped to the original content-frame shape/size, just
+    # repositioned — so it never bleeds into the new blank margin.
+    page_clip = rrect(PERF_MARGIN, PERF_MARGIN, CONTENT_W, CONTENT_H, CORNER+BLEED)
 
     # ── Build PDF objects ─────────────────────────────────────────────────────
     # We define spot colors as named resources in /ColorSpace dict on the page
@@ -166,25 +259,54 @@ def generate_pdf(image_bytes, chip_type, order_info):
     return buf.getvalue()
 
 
+# Gmail rejects any outgoing message once its total (post-base64) size
+# exceeds ~25MB. Base64 inflates raw attachment bytes by ~1.37x, so we cap
+# each email's raw attachment payload well under that line. Large orders
+# (many designs/copies) are automatically split across multiple emails
+# instead of silently failing to send at all.
+MAX_BATCH_BYTES = 15 * 1024 * 1024  # 15MB raw ≈ ~20.5MB after base64
+
 def send_email(to_addr, subject, body, attachments):
     smtp_user = os.environ.get('SMTP_USER', '')
     smtp_pass = os.environ.get('SMTP_PASS', '')
     if not smtp_user or not smtp_pass:
         print("WARNING: SMTP credentials not set"); return False
-    msg = MIMEMultipart()
-    msg['From']=smtp_user; msg['To']=to_addr; msg['Subject']=subject
-    msg.attach(MIMEText(body,'plain'))
-    for fname,data in attachments:
-        part=MIMEBase('application','pdf'); part.set_payload(data)
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition',f'attachment; filename="{fname}"')
-        msg.attach(part)
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com',465) as s:
-            s.login(smtp_user,smtp_pass); s.sendmail(smtp_user,to_addr,msg.as_string())
-        return True
-    except Exception as e:
-        print(f"Email error: {e}"); return False
+
+    # Split attachments into size-safe batches.
+    batches = []
+    current, current_size = [], 0
+    for fname, data in attachments:
+        if current and current_size + len(data) > MAX_BATCH_BYTES:
+            batches.append(current)
+            current, current_size = [], 0
+        current.append((fname, data))
+        current_size += len(data)
+    if current or not attachments:
+        batches.append(current)
+
+    total_parts = len(batches)
+    all_ok = True
+    for idx, batch in enumerate(batches, start=1):
+        part_subject = subject if total_parts == 1 else f"{subject} (Part {idx} of {total_parts})"
+        part_body = body if total_parts == 1 else (
+            f"{body}\n\nThis order's files were split across {total_parts} emails "
+            f"due to attachment size — this is part {idx} of {total_parts}."
+        )
+        msg = MIMEMultipart()
+        msg['From']=smtp_user; msg['To']=to_addr; msg['Subject']=part_subject
+        msg.attach(MIMEText(part_body,'plain'))
+        for fname,data in batch:
+            part=MIMEBase('application','pdf'); part.set_payload(data)
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition',f'attachment; filename="{fname}"')
+            msg.attach(part)
+        try:
+            with smtplib.SMTP_SSL('smtp.gmail.com',465) as s:
+                s.login(smtp_user,smtp_pass); s.sendmail(smtp_user,to_addr,msg.as_string())
+        except Exception as e:
+            print(f"Email error (part {idx} of {total_parts}): {e}")
+            all_ok = False
+    return all_ok
 
 
 @app.route('/', methods=['GET'])
@@ -200,33 +322,104 @@ def generate_pdf_endpoint():
         designs = json.loads(request.form.get('designs','[]'))
         print(f"Order: {order_info['first_name']} {order_info['last_name']} #{order_info['order_number']}, {len(designs)} designs")
 
+        chip_labels = {'standard':'Standard Chip','large':'Large Chip'}
         attachments = []
+        failed = []  # [{'index':.., 'chip':.., 'reason':..}]
+
+        designs_ok = 0
+
         for i,design in enumerate(designs):
             fk = f'image_{i+1}'
             if fk not in request.files: continue
             chip  = design.get('chip_type','standard')
-            qty   = design.get('quantity',1)
             didx  = design.get('design_index',i+1)
+            try:
+                qty = max(1, int(design.get('quantity',1)))
+            except (TypeError, ValueError):
+                qty = 1
             img_b = request.files[fk].read()
-            print(f"  Design {didx}: {chip} chip, {len(img_b)} bytes")
-            pdf   = generate_pdf(img_b, chip, order_info)
-            fname = (f"DapperThreads_{order_info['first_name']}{order_info['last_name']}"
-                     f"_Order{order_info['order_number']}_Design{didx}_{chip}chip_qty{qty}_PRINT+CUT.pdf")
-            attachments.append((fname,pdf))
-            print(f"  → {len(pdf):,} bytes")
+            print(f"  Design {didx}: {chip} chip, qty {qty}, {len(img_b)} bytes")
 
-        if not attachments: return jsonify({'error':'No valid images'}),400
+            ok, reason = validate_upload(img_b)
+            if not ok:
+                print(f"  ⚠ Design {didx} FAILED validation: {reason}")
+                failed.append({'index': didx, 'chip': chip, 'qty': qty, 'reason': reason})
+                continue
 
-        chip_labels = {'standard':'Standard Chip','large':'Large Chip'}
+            pdf = generate_pdf(img_b, chip, order_info)
+            designs_ok += 1
+            # One PDF file per requested copy — so the inbox has exactly as
+            # many files as cards to produce, no manual duplicating needed.
+            # Naming convention: CustomerName_Order#_Design#_CopyXofX.pdf
+            customer_name = f"{order_info['first_name']}{order_info['last_name']}"
+            for copy_n in range(1, qty+1):
+                fname = f"{customer_name}_Order{order_info['order_number']}_Design{didx}_Copy{copy_n}of{qty}.pdf"
+                attachments.append((fname,pdf))
+            print(f"  → {len(pdf):,} bytes × {qty} copies")
+
+        if not attachments and not failed: return jsonify({'error':'No valid images'}),400
+
         design_lines = '\n'.join([f"  Design {d.get('design_index',i+1)}: {chip_labels.get(d.get('chip_type','standard'))}, Qty {d.get('quantity',1)}" for i,d in enumerate(designs)])
-        subject = f"New Card Skin Order — {order_info['first_name']} {order_info['last_name']} — Order #{order_info['order_number']}"
-        body = f"New order received.\n\nName: {order_info['first_name']} {order_info['last_name']}\nEmail: {order_info['email']}\nOrder #: {order_info['order_number']}\nDesigns: {len(designs)}\n\n{design_lines}\n\nPDF files use proper /Separation spot colors — drop directly into VersaWorks 6.\n  CutContour = kiss cut (card edge + chip hole)\n  PerfCutContour = full cut (outer edge)\n"
-        sent = send_email('erika@dapperthreadsus.com', subject, body, attachments)
-        send_email(order_info['email'],
-            f"Your Dapper Threads Order #{order_info['order_number']} — Design Received!",
-            f"Hi {order_info['first_name']},\n\nThank you! We've received your design(s) and will get started right away.\n\nOrder #: {order_info['order_number']}\nDesigns: {len(designs)}\n\nYour order ships within 10 business days.\n\nQuestions? Email support@dapperthreadsus.com\n\n— The Dapper Threads Team", [])
 
-        return jsonify({'status':'success','designs':len(attachments),'email_sent':sent})
+        subject = f"New Card Skin Order — {order_info['first_name']} {order_info['last_name']} — Order #{order_info['order_number']}"
+        if failed:
+            subject += " — ⚠ design upload issue"
+
+        body = (f"New order received.\n\n"
+                f"Name: {order_info['first_name']} {order_info['last_name']}\n"
+                f"Email: {order_info['email']}\n"
+                f"Order #: {order_info['order_number']}\n"
+                f"Designs submitted: {len(designs)}\n"
+                f"Designs processed OK: {designs_ok}\n"
+                f"Designs failed: {len(failed)}\n"
+                f"Total PDF files attached: {len(attachments)} (one per card, quantities already expanded)\n\n"
+                f"{design_lines}\n")
+
+        if failed:
+            failed_lines = '\n'.join([f"  Design {f['index']} ({chip_labels.get(f['chip'],'Unknown')}): {f['reason']}" for f in failed])
+            body += (f"\n⚠️ The following design(s) did NOT upload correctly and were NOT included as PDFs:\n"
+                      f"{failed_lines}\n\n"
+                      f"The customer has been emailed asking them to resubmit these specific design(s).\n")
+
+        body += ("\nPDF files use proper /Separation spot colors — drop directly into VersaWorks 6.\n"
+                 "  CutContour = kiss cut (card edge + chip hole)\n"
+                 "  PerfCutContour = full cut (outer edge)\n")
+
+        sent = send_email('erika@dapperthreadsus.com', subject, body, attachments)
+
+        if failed:
+            failed_customer_lines = '\n'.join([f"  Design {f['index']} ({chip_labels.get(f['chip'],'')})" for f in failed])
+            cust_subject = f"Action Needed — Your Dapper Threads Order #{order_info['order_number']}"
+            cust_body = (f"Hi {order_info['first_name']},\n\n"
+                         f"Thanks for your order! We received {len(attachments)} of your {len(designs)} design(s) successfully "
+                         f"and are already getting started on those.\n\n"
+                         f"Unfortunately the following design(s) didn't upload correctly and could not be processed:\n"
+                         f"{failed_customer_lines}\n\n"
+                         f"This usually happens when an image doesn't finish uploading (e.g. a slow or interrupted connection). "
+                         f"Please resubmit just these design(s) here: {FORM_URL}\n"
+                         f"Reference Order #{order_info['order_number']} so we can match it up with the rest of your order.\n\n"
+                         f"Your order ships within 10 business days of us receiving all designs.\n\n"
+                         f"Questions? Email support@dapperthreadsus.com\n\n"
+                         f"— The Dapper Threads Team")
+        else:
+            cust_subject = f"Your Dapper Threads Order #{order_info['order_number']} — Design Received!"
+            cust_body = (f"Hi {order_info['first_name']},\n\n"
+                         f"Thank you! We've received your design(s) and will get started right away.\n\n"
+                         f"Order #: {order_info['order_number']}\n"
+                         f"Designs: {len(designs)}\n\n"
+                         f"Your order ships within 10 business days.\n\n"
+                         f"Questions? Email support@dapperthreadsus.com\n\n"
+                         f"— The Dapper Threads Team")
+
+        send_email(order_info['email'], cust_subject, cust_body, [])
+
+        return jsonify({
+            'status': 'success' if not failed else 'partial',
+            'designs_ok': designs_ok,
+            'files_attached': len(attachments),
+            'failed': failed,
+            'email_sent': sent
+        })
     except Exception as e:
         traceback.print_exc(); return jsonify({'error':str(e)}),500
 
